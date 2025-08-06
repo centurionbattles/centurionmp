@@ -1,0 +1,53 @@
+const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
+
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+let players = [];
+
+wss.on('connection', (ws) => {
+  // Reject more than 2 players
+  if (players.length >= 2) {
+    ws.send(JSON.stringify({ type: 'full', message: 'Game room full' }));
+    ws.close();
+    return;
+  }
+
+  const playerId = players.length + 1;
+  players.push(ws);
+  console.log(`Player ${playerId} connected`);
+
+  ws.send(JSON.stringify({ type: 'init', player: playerId }));
+
+  ws.on('message', (message) => {
+    console.log("Received:", message);
+    players.forEach((p) => {
+      if (p !== ws && p.readyState === WebSocket.OPEN) {
+        p.send(message);
+      }
+    });
+  });
+
+  ws.on('close', () => {
+    console.log(`Player ${playerId} disconnected`);
+    players = players.filter((p) => p !== ws);
+    // Notify the remaining player
+    players.forEach((p) => {
+      if (p.readyState === WebSocket.OPEN) {
+        p.send(JSON.stringify({ type: 'player_left', message: `Player ${playerId} disconnected.` }));
+      }
+    });
+  });
+});
+
+app.get('/', (req, res) => {
+  res.send("✅ Centurion WebSocket server is running.");
+});
+
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => {
+  console.log(`✅ WebSocket server running on port ${PORT}`);
+});
